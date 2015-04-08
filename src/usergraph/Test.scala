@@ -1,9 +1,9 @@
 package usergraph
-import scala.util.Random
-import scala.sys.process._
-import scala.math.abs
+
 import java.io._
+
 import scala.collection.mutable.HashMap
+import scala.util.Random
 
 object Test extends App {
   def toDot(users: Iterable[User], colorMap: HashMap[String, String], rootUser: User): String =

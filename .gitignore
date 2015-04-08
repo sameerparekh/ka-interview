@@ -2,3 +2,5 @@
 *.png
 bin
 src/usergraph/usergraph
+.worksheet
+.cache
