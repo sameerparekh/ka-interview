@@ -6,9 +6,7 @@ import scala.collection.mutable.HashMap
 import scala.util.Random
 
 object Test extends App {
-  def toDot(users: Iterable[User], colorMap: HashMap[String, String], rootUser: User): String =
-    "digraph users {\n" + users.map(x => x.toDotNode(colorMap, x == rootUser)).mkString("\n") + "\n\n" +
-      users.map(x => x.toDotEdges).mkString("\n") + "\n}"
+
 
   var testNumber = 0
   def runTests(seed: Int, numUsers: Int): Unit = {
@@ -21,92 +19,91 @@ object Test extends App {
       System.currentTimeMillis - s
     }
     
-    def testTotal(userList: IndexedSeq[User]): Unit = {
+    val userList = (1 to numUsers).map(x => new User(x.toString, "0")).toSet
+
+    def testTotal(graph: Graph[User]): Unit = {
       testNumber += 1
       println("Running total_infection test " + testNumber.toString)
 
-      val randomUser = random.nextInt(userList.length)
+      val randomUser = random.nextInt(userList.size)
       println("root user: " + (randomUser + 1))
 
-      println("time: " + (time { userList(randomUser).total_infection(testNumber.toString) }) + "ms")
+      println("time: " + (time { userList.toVector(randomUser).totalInfection(testNumber.toString, graph) }) + "ms")
 
       val pw = new PrintWriter(testNumber.toString + ".dot")
-      val colorMap = HashMap(testNumber.toString -> "red")
-
-      pw.write(toDot(userList, colorMap, userList(randomUser)))
+      pw.write(graph.toDot(testNumber.toString, userList.toVector(randomUser)))
       pw.close
 
       // All coaches are infected
-      userList(randomUser).getCoaches.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.reverse(userList.toVector(randomUser)).foreach(x => assert(x.getVersion == testNumber.toString))
 
       // Coaches' coaches are infected
-      userList(randomUser).getCoaches.map(x => x.getCoaches).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.reverse(userList.toVector(randomUser)).map(x => graph.reverse(x)).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
 
       // Coaches' coachees are infected
-      userList(randomUser).getCoaches.map(x => x.getCoachees).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.reverse(userList.toVector(randomUser)).map(x => graph.forward(x)).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
 
       // Coachees are infected
-      userList(randomUser).getCoachees.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.forward(userList.toVector(randomUser)).foreach(x => assert(x.getVersion == testNumber.toString))
 
       // Coachees' coaches are infected
-      userList(randomUser).getCoachees.map(x => x.getCoaches).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.forward(userList.toVector(randomUser)).map(x => graph.reverse(x)).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
 
       // Coachees' coachees are infected
-      userList(randomUser).getCoachees.map(x => x.getCoachees).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
+      graph.forward(userList.toVector(randomUser)).map(x => graph.forward(x)).flatten.foreach(x => assert(x.getVersion == testNumber.toString))
 
     }
 
-    def testLimited(userList: IndexedSeq[User], n: Int): Unit = {
+    def testLimited(graph: Graph[User], n: Int): Unit = {
       testNumber += 1
       println("Running limited_infection test " + testNumber.toString + " to infect " + n.toString)
-      val randomUser = random.nextInt(userList.length)
+      val randomUser = random.nextInt(userList.size)
       println("root user: " + (randomUser + 1))
-      println("Time: " + (time { userList(randomUser).limitedInfection(testNumber.toString, n) }) + "ms")
+      println("Time: " + (time { userList.toVector(randomUser).limitedInfection(testNumber.toString, n, graph) }) + "ms")
 
       val pw = new PrintWriter(testNumber.toString + ".dot")
-      val colorMap = HashMap(testNumber.toString -> "red")
-
-      pw.write(toDot(userList, colorMap, userList(randomUser)))
+      pw.write(graph.toDot(testNumber.toString, userList.toVector(randomUser)))
       pw.close
 
       val c = userList.count(x => x.getVersion == testNumber.toString)
       println("number infected: " + c)
     }
 
-    val simpleList = (1 to numUsers).map(x => new User(x.toString, ""))
 
     val tenPercent: Int = numUsers / 10
     val fivePercent: Int = numUsers / 20
     val twoPercent: Int = numUsers / 50
+    
+    
 
     /* The first 10% can coach the last 90%, each one coaches 5% */
-    (1 to fivePercent).foreach(x => simpleList.take(tenPercent).foreach(x => x.addCoachee(simpleList(random.nextInt(numUsers - tenPercent) + tenPercent))))
+    val simpleEdges = (1 to fivePercent).flatMap(x => userList.take(tenPercent).map(x => (x, userList.toVector(random.nextInt(numUsers - tenPercent) + tenPercent)))).toSet ++
+                      (1 to twoPercent).flatMap(x => userList.takeRight(tenPercent).map(x => (x, userList.toVector(random.nextInt(numUsers))))).toSet
 
-    /* The last 10% can coach anyone, each one coaches 1% */
-    (1 to twoPercent).foreach(x => simpleList.takeRight(tenPercent).foreach(x => x.addCoachee(simpleList(random.nextInt(numUsers)))))
-
-    testTotal(simpleList) 
-    testLimited(simpleList, numUsers / 10) 
-    testLimited(simpleList, numUsers / 3) 
-    testLimited(simpleList, numUsers / 2) 
-    testLimited(simpleList, numUsers) 
-    testLimited(simpleList, numUsers * 2) 
+    val simpleGraph = new Graph(simpleEdges)
+    testTotal(simpleGraph) 
+    testLimited(simpleGraph, numUsers / 10) 
+    testLimited(simpleGraph, numUsers / 3) 
+    testLimited(simpleGraph, numUsers / 2) 
+    testLimited(simpleGraph, numUsers) 
+    testLimited(simpleGraph, numUsers * 2) 
 
 
-    val complexList = (1 to numUsers).map(x => new User(x.toString, ""))
-
+    val complexEdges = 
     /* In the complex graph, each user will coach any 3 other users */
-    (1 to 3).foreach(x => complexList.foreach(x => x.addCoachee(complexList(random.nextInt(numUsers)))))
-
-    testTotal(complexList) 
-    testLimited(complexList, numUsers / 10) 
-    testLimited(complexList, numUsers / 3) 
-    testLimited(complexList, numUsers / 2) 
-    testLimited(complexList, numUsers) 
-    testLimited(complexList, numUsers * 2)     
+    (1 to 3).flatMap(x => userList.map(x => (x, userList.toVector(random.nextInt(numUsers))))).toSet
+    val complexGraph = new Graph(complexEdges)
+    
+    testTotal(complexGraph) 
+    testLimited(complexGraph, numUsers / 10) 
+    testLimited(complexGraph, numUsers / 3) 
+    testLimited(complexGraph, numUsers / 2) 
+    testLimited(complexGraph, numUsers) 
+    testLimited(complexGraph, numUsers * 2)     
   }
-  (1 to 100).foreach(x => runTests(x, 100))
-  (1 to 100).foreach(x => runTests(x, 500))
-  (1 to 100).foreach(x => runTests(x, 1000))
+  //(1 to 100).foreach(x => runTests(x, 100))
+  //(1 to 100).foreach(x => runTests(x, 500))
+  //(1 to 100).foreach(x => runTests(x, 1000))
+  runTests(1, 100)
 
 }

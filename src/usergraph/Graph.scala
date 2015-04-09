@@ -2,17 +2,21 @@ package usergraph
 
 import java.util.HashMap
 
-class Graph[T](edges: Set[(T, T)]) {
+trait GraphNode {
+  def color: String
+}
+
+class Graph[T <: GraphNode](edges: Set[(T, T)]) {
   private def edgesFromNode(node: T) = (node, edges.filter(x => x._1 == node).map(x => x._2))
   private def edgesToNode(node: T) = (node, edges.filter(x => x._2 == node).map(x => x._1))
 
-  lazy val forward = edges.map(x => x._1).map(edgesFromNode).toMap
-  lazy val reverse = edges.map(x => x._2).map(edgesToNode).toMap
+  lazy val forward = edges.map(x => x._1).map(edgesFromNode).toMap.withDefaultValue(Set[T]())
+  lazy val reverse = edges.map(x => x._2).map(edgesToNode).toMap.withDefaultValue(Set[T]())
   lazy val nodes = edges.map(x => x._1) ++ edges.map(x => x._2)
 
   def connected(startNode: T) = {
     def connectedAux(fromNode: T, foundNodes: Set[T]): Set[T] = {
-      val localNodes = forward.getOrElse(fromNode, Set[T]()) ++ reverse.getOrElse(fromNode, Set[T]())
+      val localNodes = forward(fromNode) ++ reverse(fromNode)
       val newFoundNodes = localNodes ++ foundNodes + fromNode
       val localNodesLessFound = localNodes -- foundNodes
       localNodesLessFound.foldRight(newFoundNodes)((x, y) => connectedAux(x, y))
@@ -46,7 +50,7 @@ class Graph[T](edges: Set[(T, T)]) {
       val (foundNodes, reverseNodeLog) = accum
 
       /* Nodes forward from the fromNode */
-      val forwardNodes = forward.getOrElse(fromNode, Set[T]())
+      val forwardNodes = forward(fromNode)
 
       /* Now our new found nodes might be the combination of these forward nodes
        * and what we've found before
@@ -62,7 +66,7 @@ class Graph[T](edges: Set[(T, T)]) {
       val nodesToTraverse = newFoundNodes -- foundNodes
 
       /* Find the nodes behind the ones we about to traverse into */
-      val forwardReverseNodes = nodesToTraverse.flatMap(x => reverse.getOrElse(x, Set[T]()))
+      val forwardReverseNodes = nodesToTraverse.flatMap(x => reverse(x))
 
       /* Add them to the reverseLog, while also removing the nodes already found */
       val newReverseNodeLog = reverseNodeLog ++ forwardReverseNodes -- newFoundNodes
@@ -74,7 +78,7 @@ class Graph[T](edges: Set[(T, T)]) {
     /* Initialize the found nodes to the node we are starting on, 
      * and the reverse log to the nodes behind the starting node
      */
-    val (foundNodes, reverseNodeLog) = connectedForward(startNode, (Set[T](startNode), reverse.getOrElse(startNode, Set[T]())))
+    val (foundNodes, reverseNodeLog) = connectedForward(startNode, (Set[T](startNode), reverse(startNode)))
 
     /**
      * Now foundNodes is the set of all nodes we've found so far, and reverseNodeLog are the nodes
@@ -84,7 +88,7 @@ class Graph[T](edges: Set[(T, T)]) {
       val (foundNodes, reverseNodeLog) = accum
       
       /* What will new found nodes look like if startElem and its forward elements are found */
-      val newFoundNodesMaybe = forward.getOrElse(startElem, Set[T]()) ++ foundNodes + startElem
+      val newFoundNodesMaybe = forward(startElem) ++ foundNodes + startElem
       
       /* If it's greater than n, then let's stick with the old one and we won't have found these */
       val newFoundNodes = if (newFoundNodesMaybe.size > n) foundNodes else newFoundNodesMaybe
@@ -100,9 +104,12 @@ class Graph[T](edges: Set[(T, T)]) {
     finalFoundNodes
   }
 
-  def toDot(label: String): String = {
+  def toDot(label: String, rootNode: T): String = {
     def toDotNode(node: T): String =
-      node.hashCode + " [label=\"" + node.toString + "\"]"
+      if (node == rootNode)
+        node.hashCode + " [shape=polygon,edges=5,peripheries=5,color=" + node.color + ",style=filled,label=\"" + node.toString + "\"]"        
+      else
+        node.hashCode + " [color=" + node.color + ",style=filled,label=\"" + node.toString + "\"]"
 
     def toDotNodes: String =
       nodes.map(toDotNode).mkString("\n")
